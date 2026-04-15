@@ -1,0 +1,34 @@
+---
+description: Ground implementation decisions in .context specs
+alwaysApply: true
+---
+
+# Context Grounding Rule
+
+Use `.context` documents as the primary source of truth for product scope, architecture, contracts, and implementation behavior.
+
+## Required Behavior
+
+- Start substantial tasks by checking relevant `.context` files before coding.
+- Prioritize explicit spec statements over assumptions.
+- When a request conflicts with `.context`, call out the conflict and propose aligned options.
+- Keep implementation and generated docs consistent with `.context` contracts and terminology.
+- After substantive changes, verify outputs still align with `.context` and note any intentional deviations.
+
+## Grounding Order
+
+1. Use `.context` specs directly relevant to the task.
+2. Use existing repository code that already implements those specs.
+3. Use reasonable engineering defaults only when `.context` is silent.
+
+## When Context Is Missing (Soft Warning Mode)
+
+- Continue implementation only with clearly labeled assumptions.
+- State what is missing and suggest the minimal `.context` update needed.
+- Prefer additive, reversible changes until context is clarified.
+
+## Practical Examples
+
+- New API/tool behavior: align request/response with `.context` schema contracts.
+- Job orchestration changes: align status transitions with lifecycle/error contract.
+- AWS validation work: align with catalog governance and validation semantics.

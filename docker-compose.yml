@@ -1,0 +1,76 @@
+services:
+  ui:
+    profiles: ["local", "hosted"]
+    build:
+      context: ./ui
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+      - mcp-server
+    environment:
+      - VITE_CIEM_MODE=${CIEM_MODE:-local}
+      - VITE_API_BASE_URL=${CIEM_API_BASE_URL:-http://localhost:8000}
+      - VITE_MCP_BASE_URL=${CIEM_MCP_BASE_URL:-http://localhost:8001}
+
+  api:
+    profiles: ["local", "hosted"]
+    build:
+      context: ./services/api
+    ports:
+      - "8000:8000"
+    environment:
+      - CIEM_MODE=${CIEM_MODE:-local}
+      - CIEM_AUTH_MODE=${CIEM_AUTH_MODE:-local_token}
+      - CIEM_TENANCY_MODE=${CIEM_TENANCY_MODE:-single}
+      - CIEM_SIGNING_KEY_SOURCE=${CIEM_SIGNING_KEY_SOURCE:-dev-local-key}
+      - CIEM_DB_URL=${CIEM_DB_URL:-postgresql://ciem:ciem@postgres:5432/ciem_factory}
+      - CIEM_OBJECT_STORE_ENDPOINT=${CIEM_OBJECT_STORE_ENDPOINT:-http://minio:9000}
+    depends_on:
+      - postgres
+      - minio
+
+  mcp-server:
+    profiles: ["local", "hosted"]
+    build:
+      context: ./services/mcp-server
+    ports:
+      - "8001:8001"
+
+  worker:
+    profiles: ["local", "hosted"]
+    build:
+      context: ./services/worker
+    environment:
+      - CIEM_MODE=${CIEM_MODE:-local}
+    depends_on:
+      - api
+
+  postgres:
+    profiles: ["local", "hosted"]
+    image: postgres:16-alpine
+    environment:
+      - POSTGRES_USER=ciem
+      - POSTGRES_PASSWORD=ciem
+      - POSTGRES_DB=ciem_factory
+    ports:
+      - "5432:5432"
+    volumes:
+      - ciem-postgres:/var/lib/postgresql/data
+
+  minio:
+    profiles: ["local", "hosted"]
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - ciem-minio:/data
+
+volumes:
+  ciem-postgres:
+  ciem-minio:

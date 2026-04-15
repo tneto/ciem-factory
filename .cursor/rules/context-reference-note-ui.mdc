@@ -1,0 +1,19 @@
+---
+description: Require context references note for UI changes
+globs: ui/**/*
+alwaysApply: false
+---
+
+# Context References Note (UI)
+
+For substantial changes in `ui/**`, include a short **Context references used** note in the response.
+
+## Required note format
+
+- `Context references used: <doc1>, <doc2>, ...`
+
+## Requirements
+
+- Reference the exact `.context` files used to ground UX, workflow, and deployment-mode decisions.
+- If `.context` is silent, include `assumption:` with one concise statement.
+- Keep the note brief (one to three lines).
