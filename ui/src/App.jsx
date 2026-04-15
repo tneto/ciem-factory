@@ -17,8 +17,11 @@ export default function App() {
   const [jobs, setJobs] = useState([]);
   const [projectId, setProjectId] = useState("proj-123");
   const [jobName, setJobName] = useState("payments-api-rightsizing");
+  const [artifactPath, setArtifactPath] = useState("./examples/payments/main.tf");
+  const [artifactContent, setArtifactContent] = useState('resource "aws_s3_bucket" "payments" {}');
   const [selectedJobId, setSelectedJobId] = useState("");
   const [message, setMessage] = useState("");
+  const [resultJson, setResultJson] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const selectedJob = useMemo(
@@ -67,6 +70,7 @@ export default function App() {
       await fetchJobs();
       setSelectedJobId(job.id);
       setMessage(`Created job ${job.id}`);
+      setResultJson(job);
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -99,6 +103,37 @@ export default function App() {
       }
       await fetchJobs();
       setMessage("Registered governance document and advanced job state.");
+      setResultJson({ action: "register_policy_document", job_id: selectedJobId });
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRegisterArtifact() {
+    if (!selectedJobId) {
+      setMessage("Select a job first.");
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBase}/v1/jobs/${selectedJobId}/artifacts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          artifact_type: "terraform",
+          path: artifactPath,
+          content: artifactContent
+        })
+      });
+      if (!response.ok) {
+        throw new Error("Failed to register artifact.");
+      }
+      await fetchJobs();
+      setMessage("Registered artifact and advanced job state.");
+      setResultJson({ action: "register_artifact", job_id: selectedJobId });
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -124,6 +159,35 @@ export default function App() {
       }
       await fetchJobs();
       setMessage(`Graph built (${data.node_count} nodes / ${data.edge_count} edges).`);
+      setResultJson(data);
+    } catch (error) {
+      setMessage(error.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runStep(path, body, successMessage) {
+    if (!selectedJobId) {
+      setMessage("Select a job first.");
+      return;
+    }
+    setLoading(true);
+    setMessage("");
+    try {
+      const response = await fetch(`${apiBase}${path}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        const code = data?.detail?.error?.code || "UNKNOWN_ERROR";
+        throw new Error(`${successMessage} failed: ${code}`);
+      }
+      await fetchJobs();
+      setMessage(successMessage);
+      setResultJson(data);
     } catch (error) {
       setMessage(error.message);
     } finally {
@@ -157,6 +221,19 @@ export default function App() {
             </label>
             <button type="submit" disabled={loading}>Create Job</button>
           </form>
+          <div className="form compact">
+            <label>
+              Artifact Path
+              <input value={artifactPath} onChange={(event) => setArtifactPath(event.target.value)} />
+            </label>
+            <label>
+              Artifact Content
+              <textarea
+                value={artifactContent}
+                onChange={(event) => setArtifactContent(event.target.value)}
+              />
+            </label>
+          </div>
           <div className="row">
             <select
               value={selectedJobId}
@@ -172,14 +249,89 @@ export default function App() {
             <button type="button" onClick={handleRegisterPolicyDoc} disabled={loading || !selectedJobId}>
               Register Policy Doc
             </button>
+            <button type="button" onClick={handleRegisterArtifact} disabled={loading || !selectedJobId}>
+              Register Artifact
+            </button>
             <button type="button" onClick={handleBuildGraph} disabled={loading || !selectedJobId}>
               Build Graph
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                runStep(
+                  `/v1/jobs/${selectedJobId}/generate-candidate-policy`,
+                  { provider: "aws", identity_types: ["deployment_role", "runtime_role"] },
+                  "Generated candidate policy"
+                )
+              }
+              disabled={loading || !selectedJobId}
+            >
+              Generate Policy
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                runStep(
+                  `/v1/jobs/${selectedJobId}/validate-candidate-policy`,
+                  { provider: "aws" },
+                  "Validated candidate policy"
+                )
+              }
+              disabled={loading || !selectedJobId}
+            >
+              Validate
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                runStep(
+                  `/v1/jobs/${selectedJobId}/compare-current-permissions`,
+                  {
+                    provider: "aws",
+                    current_policy: {
+                      Version: "2012-10-17",
+                      Statement: [{ Effect: "Allow", Action: ["iam:CreateRole", "s3:GetObject"], Resource: "*" }]
+                    }
+                  },
+                  "Generated permission diff"
+                )
+              }
+              disabled={loading || !selectedJobId}
+            >
+              Diff
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                runStep(
+                  `/v1/jobs/${selectedJobId}/explain-permission`,
+                  { provider: "aws", permission: "iam:CreateRole" },
+                  "Generated permission explanation"
+                )
+              }
+              disabled={loading || !selectedJobId}
+            >
+              Explain
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                runStep(
+                  `/v1/jobs/${selectedJobId}/export-policy-bundle`,
+                  { provider: "aws", format: "json" },
+                  "Exported signed policy bundle"
+                )
+              }
+              disabled={loading || !selectedJobId}
+            >
+              Export Bundle
             </button>
           </div>
           {selectedJob ? (
             <p className="muted">Current status: <strong>{selectedJob.status}</strong></p>
           ) : null}
           {message ? <p className="muted">{message}</p> : null}
+          {resultJson ? <pre className="json">{JSON.stringify(resultJson, null, 2)}</pre> : null}
         </article>
 
         <article className="card">

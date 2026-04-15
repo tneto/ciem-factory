@@ -36,6 +36,8 @@ services:
       context: ./services/mcp-server
     ports:
       - "8001:8001"
+    environment:
+      - CIEM_API_BASE_URL=${CIEM_API_BASE_URL:-http://api:8000}
 
   worker:
     profiles: ["local", "hosted"]

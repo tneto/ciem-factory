@@ -18,9 +18,33 @@ permission recommendations.
 - `POST /v1/jobs` create job
 - `GET /v1/jobs` list jobs
 - `GET /v1/jobs/{job_id}` get job
+- `POST /v1/jobs/{job_id}/artifacts` register artifact reference + content
+- `GET /v1/jobs/{job_id}/artifacts` list artifacts
 - `POST /v1/jobs/{job_id}/policy-documents` register policy document
 - `GET /v1/jobs/{job_id}/policy-documents` list policy documents
-- `POST /v1/jobs/{job_id}/build-permission-graph` transition to `graph_built`
+- `POST /v1/jobs/{job_id}/build-permission-graph` deterministic graph build
+- `GET /v1/jobs/{job_id}/graph` fetch canonical graph payload
+- `POST /v1/jobs/{job_id}/generate-candidate-policy`
+- `GET /v1/jobs/{job_id}/provider/{provider}/candidate-policy`
+- `POST /v1/jobs/{job_id}/validate-candidate-policy`
+- `GET /v1/jobs/{job_id}/provider/{provider}/validation`
+- `POST /v1/jobs/{job_id}/compare-current-permissions`
+- `GET /v1/jobs/{job_id}/diff?provider=aws`
+- `POST /v1/jobs/{job_id}/explain-permission`
+- `POST /v1/jobs/{job_id}/export-policy-bundle`
+- `GET /v1/jobs/{job_id}/audit?provider=aws`
+
+## MCP tool bridge slice (implemented)
+
+- `POST /mcp/tools/create_job`
+- `POST /mcp/tools/upload_artifact_reference`
+- `POST /mcp/tools/register_policy_document`
+- `POST /mcp/tools/build_permission_graph`
+- `POST /mcp/tools/generate_candidate_policy`
+- `POST /mcp/tools/validate_candidate_policy`
+- `POST /mcp/tools/compare_current_permissions`
+- `POST /mcp/tools/explain_permission`
+- `POST /mcp/tools/export_policy_bundle`
 
 ## Run local private profile
 
