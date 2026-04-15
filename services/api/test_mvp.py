@@ -21,6 +21,51 @@ from app import app  # noqa: E402
 client = TestClient(app)
 
 
+def _create_ready_job() -> str:
+  job_response = client.post(
+    "/v1/jobs",
+    json={
+      "name": "ready-job",
+      "project_id": "proj-ready",
+      "target_providers": ["aws"],
+      "mode": "design_time"
+    }
+  )
+  job_id = job_response.json()["id"]
+  client.post(
+    f"/v1/jobs/{job_id}/artifacts",
+    json={
+      "artifact_type": "terraform",
+      "path": "./examples/terraform/lambda-s3.tf",
+      "content": 'resource "aws_lambda_function" "fn" {}\nresource "aws_s3_bucket" "bucket" {}'
+    }
+  )
+  client.post(
+    f"/v1/jobs/{job_id}/policy-documents",
+    json={
+      "title": "Least Privilege Standard",
+      "scope": "global",
+      "provider": "all",
+      "priority": 100,
+      "content_type": "markdown",
+      "content": "Disallow unmanaged privilege escalation actions."
+    }
+  )
+  client.post(f"/v1/jobs/{job_id}/build-permission-graph")
+  client.post(
+    f"/v1/jobs/{job_id}/generate-candidate-policy",
+    json={
+      "provider": "aws",
+      "identity_types": ["deployment_role", "runtime_role"]
+    }
+  )
+  client.post(
+    f"/v1/jobs/{job_id}/validate-candidate-policy",
+    json={"provider": "aws"}
+  )
+  return job_id
+
+
 def test_health_endpoint() -> None:
   response = client.get("/health")
   assert response.status_code == 200
@@ -145,31 +190,6 @@ def test_full_aws_mvp_pipeline() -> None:
   assert validate_response.status_code == 200
   assert validate_response.json()["validation"]["result"] in {"pass", "fail"}
 
-  diff_response = client.post(
-    f"/v1/jobs/{job_id}/compare-current-permissions",
-    json={
-      "provider": "aws",
-      "current_policy": {
-        "Version": "2012-10-17",
-        "Statement": [
-          {"Effect": "Allow", "Action": ["s3:GetObject", "iam:CreateRole"], "Resource": "*"}
-        ]
-      }
-    }
-  )
-  assert diff_response.status_code == 200
-  assert "risk_delta_score" in diff_response.json()["diff"]
-
-  explain_response = client.post(
-    f"/v1/jobs/{job_id}/explain-permission",
-    json={
-      "provider": "aws",
-      "permission": "iam:CreateRole"
-    }
-  )
-  assert explain_response.status_code == 200
-  assert explain_response.json()["permission"] == "iam:CreateRole"
-
   export_response = client.post(
     f"/v1/jobs/{job_id}/export-policy-bundle",
     json={"provider": "aws", "format": "json"}
@@ -196,3 +216,106 @@ def test_build_graph_rejects_invalid_state() -> None:
   response = client.post(f"/v1/jobs/{job_id}/build-permission-graph")
   assert response.status_code == 422
   assert response.json()["detail"]["error"]["code"] == "ERR_GRAPH_BUILD_FAILED"
+
+
+def test_get_job_not_found_uses_job_error_code() -> None:
+  response = client.get("/v1/jobs/job-does-not-exist")
+  assert response.status_code == 404
+  assert response.json()["detail"]["error"]["code"] == "ERR_JOB_NOT_FOUND"
+
+
+def test_validate_rejects_completed_with_warnings_terminal_state() -> None:
+  job_id = _create_ready_job()
+  diff_response = client.post(
+    f"/v1/jobs/{job_id}/compare-current-permissions",
+    json={
+      "provider": "aws",
+      "current_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {"Effect": "Allow", "Action": ["iam:CreateRole"], "Resource": "*"}
+        ]
+      }
+    }
+  )
+  assert diff_response.status_code == 200
+  validate_response = client.post(
+    f"/v1/jobs/{job_id}/validate-candidate-policy",
+    json={"provider": "aws"}
+  )
+  assert validate_response.status_code == 409
+  assert validate_response.json()["detail"]["error"]["code"] == "ERR_INVALID_INPUT_SCHEMA"
+
+
+def test_compare_rejects_completed_with_warnings_terminal_state() -> None:
+  job_id = _create_ready_job()
+  first_diff = client.post(
+    f"/v1/jobs/{job_id}/compare-current-permissions",
+    json={
+      "provider": "aws",
+      "current_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {"Effect": "Allow", "Action": ["s3:GetObject"], "Resource": "*"}
+        ]
+      }
+    }
+  )
+  assert first_diff.status_code == 200
+  second_diff = client.post(
+    f"/v1/jobs/{job_id}/compare-current-permissions",
+    json={
+      "provider": "aws",
+      "current_policy": {
+        "Version": "2012-10-17",
+        "Statement": []
+      }
+    }
+  )
+  assert second_diff.status_code == 409
+  assert second_diff.json()["detail"]["error"]["code"] == "ERR_INVALID_INPUT_SCHEMA"
+
+
+def test_compare_transitions_validated_to_completed_with_warnings() -> None:
+  job_id = _create_ready_job()
+  before = client.get(f"/v1/jobs/{job_id}")
+  assert before.status_code == 200
+  assert before.json()["status"] == "validated"
+
+  diff_response = client.post(
+    f"/v1/jobs/{job_id}/compare-current-permissions",
+    json={
+      "provider": "aws",
+      "current_policy": {
+        "Version": "2012-10-17",
+        "Statement": []
+      }
+    }
+  )
+  assert diff_response.status_code == 200
+
+  after = client.get(f"/v1/jobs/{job_id}")
+  assert after.status_code == 200
+  assert after.json()["status"] == "completed_with_warnings"
+
+
+def test_export_rejects_completed_with_warnings_terminal_state() -> None:
+  job_id = _create_ready_job()
+  client.post(
+    f"/v1/jobs/{job_id}/compare-current-permissions",
+    json={
+      "provider": "aws",
+      "current_policy": {
+        "Version": "2012-10-17",
+        "Statement": [
+          {"Effect": "Allow", "Action": ["iam:CreateRole"], "Resource": "*"}
+        ]
+      }
+    }
+  )
+  export_response = client.post(
+    f"/v1/jobs/{job_id}/export-policy-bundle",
+    json={"provider": "aws", "format": "json"}
+  )
+  assert export_response.status_code == 409
+  assert export_response.json()["detail"]["error"]["code"] == "ERR_INVALID_INPUT_SCHEMA"

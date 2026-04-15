@@ -729,7 +729,7 @@ def get_job(job_id: str) -> JobResponse:
   with SessionLocal() as session:
     job = session.get(Job, job_id)
   if not job:
-    raise _error(404, "ERR_ARTIFACT_NOT_FOUND", "Job not found", stage="job_lookup")
+    raise _error(404, "ERR_JOB_NOT_FOUND", "Job not found", stage="job_lookup")
   return _to_job_response(job)
 
 
@@ -992,7 +992,7 @@ def validate_candidate_policy(job_id: str, payload: ValidateCandidatePolicyReque
     job = session.get(Job, job_id)
     if not job:
       raise _error(404, "ERR_JOB_NOT_FOUND", "Job not found", stage="validation")
-    if job.status not in {JobStatus.policy_generated, JobStatus.validating, JobStatus.validated, JobStatus.completed_with_warnings}:
+    if job.status not in {JobStatus.policy_generated, JobStatus.validating, JobStatus.validated}:
       raise _error(409, "ERR_INVALID_INPUT_SCHEMA", f"Cannot validate from status {job.status.value}", stage="validation")
     analysis = session.query(ProviderAnalysis).filter_by(job_id=job_id, provider=payload.provider).one_or_none()
     if not analysis or not analysis.candidate_policy_json:
@@ -1042,22 +1042,19 @@ def compare_current_permissions(job_id: str, payload: CompareCurrentPermissionsR
     job = session.get(Job, job_id)
     if not job:
       raise _error(404, "ERR_JOB_NOT_FOUND", "Job not found", stage="diffing")
-    if job.status not in {JobStatus.policy_generated, JobStatus.validated, JobStatus.diffing, JobStatus.completed_with_warnings}:
+    if job.status not in {JobStatus.policy_generated, JobStatus.validated, JobStatus.diffing}:
       raise _error(409, "ERR_INVALID_INPUT_SCHEMA", f"Cannot diff from status {job.status.value}", stage="diffing")
     analysis = session.query(ProviderAnalysis).filter_by(job_id=job_id, provider=payload.provider).one_or_none()
     if not analysis or not analysis.candidate_policy_json:
       raise _error(422, "ERR_DIFF_FAILED", "Candidate policy required before diff", stage="diffing")
     candidate = json.loads(analysis.candidate_policy_json)
-    prior_status = job.status
     job.status = JobStatus.diffing
     diff = _diff_current_policy(candidate, payload.current_policy, payload.provider)
     analysis.diff_json = json.dumps(diff)
     analysis.updated_at = now
-    # Keep validated status if already reached, otherwise mark partial completion.
-    if prior_status != JobStatus.validated:
-      job.status = JobStatus.completed_with_warnings
-    else:
-      job.status = JobStatus.validated
+    # Diffing transitions to completed_with_warnings in MVP unless export follows.
+    # This keeps state transitions aligned with the lifecycle contract.
+    job.status = JobStatus.completed_with_warnings
     job.updated_at = now
   return DiffResponse(
     id=diff["id"],
@@ -1110,6 +1107,8 @@ def export_policy_bundle(job_id: str, payload: ExportPolicyBundleRequest) -> Exp
     job = session.get(Job, job_id)
     if not job:
       raise _error(404, "ERR_JOB_NOT_FOUND", "Job not found", stage="export")
+    if job.status not in {JobStatus.policy_generated, JobStatus.validated, JobStatus.diffing, JobStatus.exporting}:
+      raise _error(409, "ERR_INVALID_INPUT_SCHEMA", f"Cannot export from status {job.status.value}", stage="export")
     analysis = session.query(ProviderAnalysis).filter_by(job_id=job_id, provider=payload.provider).one_or_none()
     if not analysis or not analysis.candidate_policy_json:
       raise _error(422, "ERR_BUNDLE_EXPORT_FAILED", "Candidate policy required before export", stage="export")

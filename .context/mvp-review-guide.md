@@ -138,11 +138,19 @@ Included now:
 - MCP tool bridge for core workflow
 - Containerized local and hosted-style profiles
 
+Planned in UI definition (next UI increment):
+
+- Direct file-picker upload in UI for Terraform/CloudFormation artifacts
+- Direct file-picker upload in UI for governance policy files
+- Drag-and-drop upload zones with text-entry fallback
+- Multipart upload endpoints for artifact and policy-document files
+
 Not yet included:
 
 - Real Terraform/CloudFormation deep parsers
 - Full provider-native simulation integrations
 - Production auth/tenant enforcement implementation details
+- UI file picker + multipart upload implementation
 
 ---
 

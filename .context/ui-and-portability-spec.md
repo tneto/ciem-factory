@@ -31,9 +31,15 @@ The same codebase must support both modes through configuration, not forks.
    - Mode selection (`design_time` or `runtime_rightsizing`)
 3. Artifact Upload
    - Add Terraform/CloudFormation artifacts
+   - Support local file picker upload for `.tf`, `.tfvars`, `.yaml`, `.yml`, `.json`
+   - Support optional drag-and-drop zone
+   - Allow manual paste as fallback when file upload is unavailable
    - Show parse status and fingerprint
 4. Governance Document Upload
    - Upload policy document
+   - Support local file picker upload for `.md`, `.txt`, `.pdf`, `.docx`, `.json`, `.yaml`, `.yml`
+   - Support optional drag-and-drop zone
+   - Allow manual paste as fallback when file upload is unavailable
    - Set scope, priority, provider, effective dates
 5. Analysis Result
    - Candidate deployment/runtime policies
@@ -61,6 +67,32 @@ The same codebase must support both modes through configuration, not forks.
   - Local mode: local static token or disabled auth for offline sandbox mode
 
 All business decisions remain backend-deterministic. UI is orchestration and visualization only.
+
+### 3.1 Required upload UX and API contracts
+
+Artifact upload must support two input modes:
+
+1. **File mode (default)**
+   - User selects one or more local files.
+   - UI sends multipart file upload request to API.
+   - API returns artifact metadata (id, hash, size, parser status).
+2. **Text mode (fallback)**
+   - User pastes content and source path.
+   - UI sends JSON payload to API.
+   - API returns equivalent artifact metadata.
+
+Governance document upload must support:
+
+- file mode for policy documents
+- text mode for manual policy entry
+- metadata form fields (title, scope, provider, priority, effective date)
+
+Minimum API endpoints expected by UI:
+
+- `POST /v1/jobs/{job_id}/artifacts` (JSON fallback mode)
+- `POST /v1/jobs/{job_id}/artifacts/upload` (multipart file mode)
+- `POST /v1/jobs/{job_id}/policy-documents` (JSON fallback mode)
+- `POST /v1/jobs/{job_id}/policy-documents/upload` (multipart file mode)
 
 ---
 
@@ -160,7 +192,7 @@ Keep service boundaries and env-driven config compatible with future Helm/K8s ma
 ## 8. MVP Acceptance Criteria
 
 1. User can run local stack with one command and open a web UI.
-2. User can create a job, upload artifact/document metadata, and trigger analysis flow.
+2. User can create a job, upload Terraform files and policy documents directly from UI, and trigger analysis flow.
 3. User can view policy candidate, risk summary, validation status, and explanation traces.
 4. Same API and MCP contracts work in both local and hosted profiles.
 5. Hosted profile rejects startup if insecure auth settings are configured.
